@@ -108,8 +108,57 @@ def create_entry():
 # Endpoint that returns a summary of a recipe that corresponds to a query name
 @app.route('/summary', methods=['GET'])
 def summary():
-	# TODO: implement me
-	return 'not implemented', 500
+    name = request.args.get("name")
+
+    if not name or name not in cookbook:
+        return jsonify({"error": "Recipe not found"}), 400
+    
+    recipe = cookbook[name]
+    
+    if recipe["type"] != "recipe":
+        return jsonify({"error": "Requested name is not a recipe"}), 400
+
+    try:
+        total_cook_time, ingredients = calculate_recipe_summary(name)
+        return jsonify({
+            "name": name,
+            "cookTime": total_cook_time,
+            "ingredients": ingredients
+        }), 200
+    except KeyError:
+        return jsonify({"error": "Recipe contains unknown ingredients"}), 400
+
+
+def calculate_recipe_summary(recipe_name):
+    """Recursively calculate total cook time and base ingredients."""
+    recipe = cookbook[recipe_name]
+    total_cook_time = 0
+    ingredient_map = {}
+
+    for item in recipe["requiredItems"]:
+        item_name = item["name"]
+        quantity = item["quantity"]
+
+        if item_name not in cookbook:
+            raise KeyError(f"Missing ingredient: {item_name}")
+
+        entry = cookbook[item_name]
+
+        if entry["type"] == "ingredient":
+            total_cook_time += entry["cookTime"] * quantity
+            ingredient_map[item_name] = ingredient_map.get(item_name, 0) + quantity
+        elif entry["type"] == "recipe":
+            sub_cook_time, sub_ingredients = calculate_recipe_summary(item_name)
+            total_cook_time += sub_cook_time * quantity
+            for ingr in sub_ingredients:
+                ingr_name = ingr["name"]
+                ingr_qty = ingr["quantity"]
+                ingredient_map[ingr_name] = ingredient_map.get(ingr_name, 0) + ingr_qty * quantity
+
+    ingredients_list = [{"name": k, "quantity": v} for k, v in ingredient_map.items()]
+
+    return total_cook_time, ingredients_list
+
 
 
 # =============================================================================
